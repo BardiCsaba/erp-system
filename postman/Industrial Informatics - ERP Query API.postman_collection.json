@@ -1,0 +1,182 @@
+{
+	"info": {
+		"_postman_id": "8ffff500-a11b-4e00-ac9d-152ec8152336",
+		"name": "Industrial Informatics - ERP Query API",
+		"description": "Collection to query data from the ERP system via its REST API.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "33451925"
+	},
+	"item": [
+		{
+			"name": "Get All Orders",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/query/orders/all",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"query",
+						"orders",
+						"all"
+					]
+				},
+				"description": "Retrieves a list of all client orders stored in the ERP."
+			},
+			"response": []
+		},
+		{
+			"name": "Get Order By Internal ID",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/query/orders/:internalId",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"query",
+						"orders",
+						":internalId"
+					],
+					"variable": [
+						{
+							"key": "internalId",
+							"value": "1",
+							"description": "The database primary key (ID) of the ClientOrder."
+						}
+					]
+				},
+				"description": "Retrieves a specific client order using its internal database ID."
+			},
+			"response": []
+		},
+		{
+			"name": "Get Orders By Client NIF",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/query/orders/by-client-nif/:nif",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"query",
+						"orders",
+						"by-client-nif",
+						":nif"
+					],
+					"variable": [
+						{
+							"key": "nif",
+							"value": "555666",
+							"description": "The NIF (Fiscal ID Number) of the client."
+						}
+					]
+				},
+				"description": "Retrieves all orders associated with a specific client's NIF."
+			},
+			"response": []
+		},
+		{
+			"name": "Get Client By NIF",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/query/clients/by-nif/:nif",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"query",
+						"clients",
+						"by-nif",
+						":nif"
+					],
+					"variable": [
+						{
+							"key": "nif",
+							"value": "555666",
+							"description": "The NIF (Fiscal ID Number) of the client."
+						}
+					]
+				},
+				"description": "Retrieves the client details for a specific NIF."
+			},
+			"response": []
+		},
+		{
+			"name": "Get Items By Type",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/query/items/by-type/:type",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"query",
+						"items",
+						"by-type",
+						":type"
+					],
+					"variable": [
+						{
+							"key": "type",
+							"value": "5",
+							"description": "The product type integer (e.g., 5 for P5)."
+						}
+					]
+				},
+				"description": "Retrieves all order items of a specific product type."
+			},
+			"response": []
+		},
+		{
+			"name": "Get Items Due On Date",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "{{baseUrl}}/api/query/items/due?date=2025-04-23",
+					"host": [
+						"{{baseUrl}}"
+					],
+					"path": [
+						"api",
+						"query",
+						"items",
+						"due"
+					],
+					"query": [
+						{
+							"key": "date",
+							"value": "2025-04-23",
+							"description": "The due date in YYYY-MM-DD format."
+						}
+					]
+				},
+				"description": "Retrieves all order items that are due on the specified date."
+			},
+			"response": []
+		}
+	],
+	"variable": [
+		{
+			"key": "baseUrl",
+			"value": "http://localhost:8080",
+			"type": "string"
+		}
+	]
+}

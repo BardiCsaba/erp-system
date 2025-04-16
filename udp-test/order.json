@@ -1,18 +1,18 @@
 {
-  "name": "Alpha Client",
-  "nif": 555666,
-  "orderID": 603,
+  "name": "Beta Client",
+  "nif": 111222,
+  "orderID": 501,
   "orders": [
     {
-      "type": 5,
+      "type": 3,
       "quantity": 1,
-      "dDate": 7,
+      "dDate": 13,
       "penalty": 1.0
     },
     {
-      "type": 6,
+      "type": 4,
       "quantity": 2,
-      "dDate": 5,
+      "dDate": 11,
       "penalty": 2.0
     }
   ]

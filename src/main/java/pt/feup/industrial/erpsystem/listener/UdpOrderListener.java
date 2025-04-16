@@ -82,7 +82,4 @@ public class UdpOrderListener implements CommandLineRunner {
             log.error("Failed to parse or process order from UDP packet: {}", receivedData, e);
         }
     }
-
-    // Consider adding a @PreDestroy method to gracefully close the socket
-    // and shut down the executor service when the application context closes.
 }
