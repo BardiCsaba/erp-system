@@ -15,10 +15,13 @@ import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import pt.feup.industrial.erpsystem.dto.ClientOrderRequestDto;
+import pt.feup.industrial.erpsystem.dto.OrderItemCompletionDto;
 import pt.feup.industrial.erpsystem.dto.OrderItemDto;
 import pt.feup.industrial.erpsystem.model.Client;
 import pt.feup.industrial.erpsystem.model.ClientOrder;
 import pt.feup.industrial.erpsystem.model.OrderItem;
+import pt.feup.industrial.erpsystem.model.OrderItemStatus;
+import pt.feup.industrial.erpsystem.model.OrderStatus;
 import pt.feup.industrial.erpsystem.repository.ClientOrderRepository;
 import pt.feup.industrial.erpsystem.repository.ClientRepository;
 import pt.feup.industrial.erpsystem.repository.OrderItemRepository;
@@ -100,6 +103,65 @@ public class OrderServiceImpl implements OrderService {
 
     private boolean isValidProductType(Integer type) {
         return type != null && (type == 5 || type == 6 || type == 7 || type == 9);
+    }
+
+    @Transactional
+    public boolean markOrderItemAsCompleted(OrderItemCompletionDto completionDto) {
+        log.info("Processing completion notification for ERP Order Item ID: {}", completionDto.getErpOrderItemId());
+
+        Optional<OrderItem> itemOpt = orderItemRepository.findById(completionDto.getErpOrderItemId());
+
+        if (itemOpt.isEmpty()) {
+            log.error("Received completion notification for unknown Order Item ID: {}", completionDto.getErpOrderItemId());
+            return false;
+        }
+
+        OrderItem item = itemOpt.get();
+
+        if (item.getStatus() == OrderItemStatus.COMPLETED) {
+            log.warn("Received duplicate completion notification for already completed Order Item ID: {}", item.getId());
+            return true;
+        }
+
+        item.setStatus(OrderItemStatus.COMPLETED);
+        item.setCompletionTimestamp(completionDto.getCompletionTime());
+        // if(completionDto.getActualQuantityProduced() != null) { item.setActualQuantity(completionDto.getActualQuantityProduced()); }
+        orderItemRepository.save(item);
+        log.info("Marked Order Item ID: {} as COMPLETED.", item.getId());
+
+        ClientOrder parentOrder = item.getClientOrder();
+        if (parentOrder != null) {
+            boolean allItemsCompleted = true;
+
+            ClientOrder freshParentOrder = clientOrderRepository.findById(parentOrder.getId()).orElse(null);
+            if (freshParentOrder != null) {
+                for (OrderItem siblingItem : freshParentOrder.getItems()) {
+                    if (siblingItem.getStatus() != OrderItemStatus.COMPLETED) {
+                        allItemsCompleted = false;
+                        break;
+                    }
+                }
+
+                if (allItemsCompleted) {
+                    log.info("All items for Client Order ID: {} are now COMPLETED. Updating parent order status.", freshParentOrder.getId());
+                    freshParentOrder.setStatus(OrderStatus.COMPLETED);
+                    clientOrderRepository.save(freshParentOrder);
+                } else {
+                    log.info("Client Order ID: {} still has pending/processing items.", freshParentOrder.getId());
+
+                    if (freshParentOrder.getStatus() == OrderStatus.SENT_TO_MES) {
+                        freshParentOrder.setStatus(OrderStatus.PROCESSING);
+                        clientOrderRepository.save(freshParentOrder);
+                    }
+                }
+            } else {
+                log.error("Could not reload parent order ID {} for item {}", parentOrder.getId(), item.getId());
+            }
+        } else {
+            log.warn("Completed Order Item ID {} has no parent ClientOrder associated!", item.getId());
+        }
+
+        return true;
     }
 
     public List<ClientOrder> getAllOrders() {

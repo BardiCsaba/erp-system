@@ -9,6 +9,7 @@ import lombok.Setter;
 import lombok.ToString;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.Objects;
 
 @Entity
@@ -41,6 +42,14 @@ public class OrderItem {
     @PositiveOrZero(message = "Penalty must be zero or positive")
     @Column(name = "penalty_per_day", nullable = false)
     private Double penaltyPerDay;
+
+    @NotNull(message = "Order item status cannot be null")
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private OrderItemStatus status = OrderItemStatus.PENDING;
+
+    @Column(name = "completion_timestamp")
+    private LocalDateTime completionTimestamp;
 
     @NotNull(message = "OrderItem must be associated with a ClientOrder")
     @ManyToOne(fetch = FetchType.LAZY)

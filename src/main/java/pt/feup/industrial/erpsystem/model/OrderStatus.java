@@ -5,5 +5,4 @@ public enum OrderStatus {
     SENT_TO_MES,  // Information successfully sent to MES
     PROCESSING,   // MES reported starting production
     COMPLETED,    // MES reported production finished
-    FAILED_TO_SEND // Error occurred trying to send to MES
 }
