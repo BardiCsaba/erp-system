@@ -44,6 +44,11 @@ public class ClientOrder {
     @JsonBackReference
     private Client client;
 
+    @NotNull(message = "Order status cannot be null")
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false)
+    private OrderStatus status = OrderStatus.PENDING;
+
     @OneToMany(
             mappedBy = "clientOrder",
             cascade = CascadeType.ALL,

@@ -99,7 +99,7 @@ public class OrderServiceImpl implements OrderService {
     }
 
     private boolean isValidProductType(Integer type) {
-        return type != null; // && (type == 5 || type == 6 || type == 7 || type == 9);
+        return type != null && (type == 5 || type == 6 || type == 7 || type == 9);
     }
 
     public List<ClientOrder> getAllOrders() {
