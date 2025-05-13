@@ -40,6 +40,8 @@ public class SchedulingService {
 
         List<ClientOrder> pendingOrders = clientOrderRepository.findByStatus(OrderStatus.PENDING);
 
+        // TODO Pending orders scheduling logic
+
         if (pendingOrders.isEmpty()) {
             log.info("Scheduled Task: No PENDING orders found.");
             return;
