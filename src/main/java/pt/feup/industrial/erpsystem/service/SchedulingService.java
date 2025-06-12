@@ -15,7 +15,9 @@ import pt.feup.industrial.erpsystem.model.OrderStatus;
 import pt.feup.industrial.erpsystem.repository.ClientOrderRepository;
 import pt.feup.industrial.erpsystem.repository.OrderItemRepository;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 public class SchedulingService {
@@ -26,6 +28,8 @@ public class SchedulingService {
     private final MesClientService mesClientService;
     private final OrderItemRepository orderItemRepository;
 
+    private static final int DAILY_FACTORY_PIECE_CAPACITY = 24;
+
     @Autowired
     public SchedulingService(ClientOrderRepository clientOrderRepository, MesClientService mesClientService, OrderItemRepository orderItemRepository) {
         this.clientOrderRepository = clientOrderRepository;
@@ -33,86 +37,113 @@ public class SchedulingService {
         this.orderItemRepository = orderItemRepository;
     }
 
-    @Scheduled(cron = "${erp.scheduling.mes-sync-cron:0 0 9 * * *}") // Default: run at 9 AM every day
-    @Transactional
+    @Scheduled(cron = "${erp.scheduling.mes-sync-cron:0 0 9 * * *}")
+    @Transactional // One transaction for the whole daily scheduling run
     public void sendPendingOrdersToMes() {
-        log.info("Scheduled Task: Checking for PENDING orders to send to MES...");
+        log.info("Daily Scheduling Task: Starting to process orders for MES.");
 
-        List<ClientOrder> pendingOrders = clientOrderRepository.findByStatus(OrderStatus.PENDING);
+        List<OrderItem> sortedPendingItems = orderItemRepository.findPendingItemsSortedByDueDate(
+                OrderItemStatus.PENDING, OrderStatus.PENDING
+        );
 
-        // TODO Pending orders scheduling logic
-
-        if (pendingOrders.isEmpty()) {
-            log.info("Scheduled Task: No PENDING orders found.");
+        if (sortedPendingItems.isEmpty()) {
+            log.info("Daily Scheduling Task: No PENDING items found to schedule.");
             return;
         }
 
-        log.info("Scheduled Task: Found {} PENDING order(s). Processing...", pendingOrders.size());
+        log.info("Daily Scheduling Task: Found {} PENDING items to consider.", sortedPendingItems.size());
 
-        for (ClientOrder order : pendingOrders) {
-            boolean orderSendAttempted = false;
-            boolean anyItemSendFailed = false;
-            int itemsToSend = 0;
-            int itemsSentSuccessfully = 0;
+        int piecesScheduledThisRun = 0;
+        Set<Long> affectedClientOrderIds = new HashSet<>();
 
-            log.debug("Processing PENDING Order ID: {}", order.getId());
+        for (OrderItem item : sortedPendingItems) {
+            if (piecesScheduledThisRun + item.getQuantity() > DAILY_FACTORY_PIECE_CAPACITY) {
+                log.info("Daily Scheduling Task: Daily factory capacity ({}) reached or would be exceeded. " +
+                                "Stopping further scheduling for this run. Pieces scheduled so far: {}.",
+                        DAILY_FACTORY_PIECE_CAPACITY, piecesScheduledThisRun);
+                break; // Stop processing more items for this run
+            }
 
-            ClientOrder orderInTx = clientOrderRepository.findById(order.getId()).orElse(null);
-            if (orderInTx == null || orderInTx.getStatus() != OrderStatus.PENDING) {
-                log.warn("Order ID {} no longer PENDING or not found, skipping.", order.getId());
+            ClientOrder parentOrder = item.getClientOrder();
+            if (parentOrder.getStatus() != OrderStatus.PENDING) {
+                log.warn("Item ID {} belongs to Order ID {} which is no longer PENDING (Status: {}). Skipping item.",
+                        item.getId(), parentOrder.getId(), parentOrder.getStatus());
                 continue;
             }
 
-            for (OrderItem item : orderInTx.getItems()) {
-                if (item.getStatus() == OrderItemStatus.PENDING) {
-                    orderSendAttempted = true;
-                    itemsToSend++;
-                    log.debug("Attempting to send item ID {} (Status: {}) for Order ID {}", item.getId(), item.getStatus(), order.getId());
+            log.debug("Processing Item ID {} (Due: {}, Qty: {}) from Order ID {}",
+                    item.getId(), item.getDueDate(), item.getQuantity(), parentOrder.getId());
 
-                    MesProductionOrderDto mesRequest = new MesProductionOrderDto(
-                            orderInTx.getId(), item.getId(), item.getProductType(), item.getQuantity(), item.getDueDate());
+            MesProductionOrderDto mesRequest = new MesProductionOrderDto(
+                    parentOrder.getId(), item.getId(), item.getProductType(), item.getQuantity(), item.getDueDate());
 
-                    boolean sentSuccessfully = mesClientService.sendProductionOrder(mesRequest);
+            boolean sentSuccessfully = mesClientService.sendProductionOrder(mesRequest);
 
-                    if (sentSuccessfully) {
-                        item.setStatus(OrderItemStatus.SENT_TO_MES);
-                        orderItemRepository.save(item);
-                        itemsSentSuccessfully++;
-                        log.info("Successfully sent item ID {} to MES. Status -> SENT_TO_MES.", item.getId());
-                    } else {
-                        item.setStatus(OrderItemStatus.FAILED_TO_SEND);
-                        orderItemRepository.save(item);
-                        anyItemSendFailed = true;
-                        log.warn("Failed to send item ID {} to MES. Status -> FAILED_TO_SEND.", item.getId());
-                    }
-                }
-            }
-
-            if (orderSendAttempted) {
-                if (anyItemSendFailed) {
-                    log.warn("Order ID {} remains PENDING because one or more items failed to send.", orderInTx.getId());
-                } else if (itemsToSend > 0 && itemsSentSuccessfully == itemsToSend) {
-                    boolean allItemsAccountedFor = true;
-                    for(OrderItem itemCheck : orderInTx.getItems()) {
-                        if (itemCheck.getStatus() == OrderItemStatus.PENDING || itemCheck.getStatus() == OrderItemStatus.FAILED_TO_SEND) {
-                            allItemsAccountedFor = false;
-                            break;
-                        }
-                    }
-
-                    if (allItemsAccountedFor) {
-                        orderInTx.setStatus(OrderStatus.SENT_TO_MES);
-                        clientOrderRepository.save(orderInTx);
-                        log.info("Successfully sent all required items for Order ID {}. Order Status -> SENT_TO_MES.", orderInTx.getId());
-                    } else {
-                        log.warn("Order ID {} still has items needing attention (PENDING/FAILED_TO_SEND), Order status remains PENDING.", orderInTx.getId());
-                    }
-                } else {
-                    log.debug("No items required sending for Order ID {} in this run.", orderInTx.getId());
-                }
+            if (sentSuccessfully) {
+                item.setStatus(OrderItemStatus.SENT_TO_MES);
+                orderItemRepository.save(item); // Persist item status change
+                piecesScheduledThisRun += item.getQuantity();
+                affectedClientOrderIds.add(parentOrder.getId());
+                log.info("Successfully sent Item ID {} to MES (Qty: {}). Status -> SENT_TO_MES. Total pieces scheduled this run: {}",
+                        item.getId(), item.getQuantity(), piecesScheduledThisRun);
+            } else {
+                item.setStatus(OrderItemStatus.FAILED_TO_SEND);
+                orderItemRepository.save(item); // Persist item status change
+                affectedClientOrderIds.add(parentOrder.getId());
+                log.warn("Failed to send Item ID {} to MES. Status -> FAILED_TO_SEND. Order ID {} will be re-evaluated for overall status.",
+                        item.getId(), parentOrder.getId());
             }
         }
 
-        log.info("Scheduled Task Finished processing PENDING orders.");
+        updateAffectedClientOrderStatuses(affectedClientOrderIds);
+
+        log.info("Daily Scheduling Task Finished. Total pieces scheduled and sent to MES: {}", piecesScheduledThisRun);
+    }
+
+    private void updateAffectedClientOrderStatuses(Set<Long> clientOrderIds) {
+        if (clientOrderIds.isEmpty()) {
+            return;
+        }
+        log.debug("Re-evaluating status for ClientOrder IDs: {}", clientOrderIds);
+
+        for (Long orderId : clientOrderIds) {
+            ClientOrder order = clientOrderRepository.findById(orderId).orElse(null);
+            if (order == null) {
+                log.warn("Could not find ClientOrder with ID {} for status update.", orderId);
+                continue;
+            }
+
+            List<OrderItem> itemsOfThisOrder = orderItemRepository.findByClientOrder_Id(orderId);
+            if (itemsOfThisOrder.isEmpty() && order.getStatus() == OrderStatus.PENDING) {
+                log.warn("Order ID {} is PENDING but has no items. Setting to an error or re-evaluating logic.", order.getId());
+                continue;
+            }
+
+
+            boolean allItemsSentOrBeyond = true;
+            boolean anyItemFailedToSend = false;
+
+            for (OrderItem item : itemsOfThisOrder) {
+                if (item.getStatus() == OrderItemStatus.PENDING) {
+                    allItemsSentOrBeyond = false;
+                    break;
+                }
+                if (item.getStatus() == OrderItemStatus.FAILED_TO_SEND) {
+                    anyItemFailedToSend = true;
+                    allItemsSentOrBeyond = false;
+                    break;
+                }
+            }
+
+            if (allItemsSentOrBeyond && order.getStatus() == OrderStatus.PENDING) {
+                order.setStatus(OrderStatus.SENT_TO_MES);
+                clientOrderRepository.save(order);
+                log.info("Updated ClientOrder ID {} status to SENT_TO_MES.", order.getId());
+            } else if (anyItemFailedToSend && order.getStatus() == OrderStatus.PENDING) {
+                log.info("ClientOrder ID {} remains PENDING due to FAILED_TO_SEND items.", order.getId());
+            } else if (!allItemsSentOrBeyond && order.getStatus() == OrderStatus.PENDING) {
+                log.info("ClientOrder ID {} remains PENDING as not all items are sent/processed yet.", order.getId());
+            }
+        }
     }
 }
