@@ -21,7 +21,7 @@ public class UdpOrderListener implements CommandLineRunner {
 
     private static final Logger log = LoggerFactory.getLogger(UdpOrderListener.class);
 
-    @Value("${erp.udp.port:5666}")
+    @Value("${erp.udp.port:24680}")
     private int udpPort;
 
     @Value("${erp.udp.buffer-size:1024}")
@@ -47,7 +47,7 @@ public class UdpOrderListener implements CommandLineRunner {
 
     private void listen() {
         log.info("Starting UDP listener on port {}", udpPort);
-        try (DatagramSocket socket = new DatagramSocket(udpPort)) {
+        try (DatagramSocket socket = new DatagramSocket(udpPort, null)) {
             byte[] buffer = new byte[bufferSize];
             while (!Thread.currentThread().isInterrupted()) {
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
